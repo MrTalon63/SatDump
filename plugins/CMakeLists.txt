@@ -527,4 +527,8 @@ if(BUILD_GUI AND PLUGIN_WEBHOOK_APP)
   add_subdirectory(webhook_app)
 endif()
 
+option(PLUGIN_UDP_SENDER "Enable UDP frame sender plugin" ON)
 
+if(PLUGIN_UDP_SENDER OR PLUGINS_ALL)
+  add_subdirectory(udp_sender)
+endif()
