@@ -29,6 +29,9 @@ namespace ssdv
             port_apid_100 = parameters["server_port_apid_100"].get<int>();
         else
             throw satdump_exception("server_port_apid_100 parameter must be present!");
+
+        use_fecf(parameters.count("fecf") > 0 ? parameters["fecf"].get<bool>() : false),
+
     }
 
     void SSDVInstrumentsDecoderModule::process()
@@ -42,7 +45,7 @@ namespace ssdv
         logger->info("Meow :3");
         logger->info("Demultiplexing and deframing...");
 
-        ccsds::ccsds_aos::Demuxer demuxer_vcid0(884, false);
+        ccsds::ccsds_aos::Demuxer demuxer_vcid0((use_fecf) ? 882 : 884, false);
 
         while (should_run())
         {
@@ -62,10 +65,10 @@ namespace ssdv
                         // output.write((char *)pkt.header.raw, 6);
                         // output.write((char *)pkt.payload.data(), 1024);
                     }
-                    else if (pkt.header.apid == 20 && pkt.payload.size() == 188)
+                    else if (pkt.header.apid == 20 && pkt.payload.size() == 752)
                     {
                         // output.write((char *)pkt.payload.data(), pkt.payload.size());
-                        udp_apid_20_send.send(pkt.payload.data(), 188);
+                        udp_apid_20_send.send(pkt.payload.data(), 752);
                     }
                     else if (pkt.header.apid == 100)
                     {

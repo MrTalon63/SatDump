@@ -22,6 +22,7 @@ namespace ssdv
 
     protected:
         std::string addr;
+        bool use_fecf;
         int port_apid_10;
         int port_apid_20;
         int port_apid_100;
