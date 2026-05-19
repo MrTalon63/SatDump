@@ -12,6 +12,7 @@ namespace dsp
         QPSK,
         OQPSK,
         PSK8,
+        QAM16,
         APSK16,
         APSK32
     };
@@ -46,12 +47,12 @@ namespace dsp
 
         struct SoftResult
         {
-            std::vector<int8_t> bits;
+            int8_t bits[8];
             float phase_error;
         };
 
         int lut_resolution;
-        std::vector<std::vector<SoftResult>> lut;
+        std::vector<SoftResult> lut;
 
     public:
         void make_lut(int resolution);

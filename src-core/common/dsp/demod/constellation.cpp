@@ -63,6 +63,30 @@ namespace dsp
             constellation[6] = complex_t(1.0, 0.0);
             constellation[7] = complex_t(rcp_sqrt_2, rcp_sqrt_2);
         }
+        else if (type == QAM16)
+        {
+            const_states = 16;
+            const_bits = 4;
+
+            constellation = new complex_t[const_states];
+
+            // Normalize for average power of 1
+            float scale = 1.0f / sqrtf(10.0f);
+
+            // DVB-T style Gray-mapped 16-QAM
+            for (int b = 0; b < 16; b++)
+            {
+                int b0 = (b >> 0) & 1;
+                int b1 = (b >> 1) & 1;
+                int b2 = (b >> 2) & 1;
+                int b3 = (b >> 3) & 1;
+
+                float i_val = (1 - 2 * b0) * (2 - (1 - 2 * b2));
+                float q_val = (1 - 2 * b1) * (2 - (1 - 2 * b3));
+
+                constellation[b] = complex_t(i_val * scale, q_val * scale);
+            }
+        }
         else if (type == APSK16)
         {
             const_states = 16;
@@ -190,6 +214,30 @@ namespace dsp
             return 2 * (sample.imag > 0) + (sample.real > 0);
             break;
 
+        case PSK8:
+        case QAM16:
+        case APSK16:
+        case APSK32:
+        {
+            complex_t scaled_sample = sample;
+            if (const_amp != 1.0f)
+                scaled_sample = scaled_sample * const_amp;
+            if (const_prescale != 1.0f)
+                scaled_sample = scaled_sample * const_prescale;
+
+            uint8_t best_symbol = 0;
+            float min_dist = std::numeric_limits<float>::max();
+            for (int i = 0; i < const_states; i++)
+            {
+                float dist = std::abs(std::complex<float>(scaled_sample - constellation[i]));
+                if (dist < min_dist)
+                {
+                    min_dist = dist;
+                    best_symbol = i;
+                }
+            }
+            return best_symbol;
+        }
         default:
             return 0;
             break;
@@ -212,6 +260,19 @@ namespace dsp
             return 2 * (sample[1] > 0) + (sample[0] > 0);
             break;
 
+        case PSK8:
+            return 4 * (sample[2] > 0) + 2 * (sample[1] > 0) + (sample[0] > 0);
+            break;
+
+        case QAM16:
+        case APSK16:
+            return 8 * (sample[3] > 0) + 4 * (sample[2] > 0) + 2 * (sample[1] > 0) + (sample[0] > 0);
+            break;
+
+        case APSK32:
+            return 16 * (sample[4] > 0) + 8 * (sample[3] > 0) + 4 * (sample[2] > 0) + 2 * (sample[1] > 0) + (sample[0] > 0);
+            break;
+
         default:
             return 0;
             break;
@@ -227,7 +288,7 @@ namespace dsp
     void constellation_t::demod_soft_calc(complex_t sample, int8_t *bits, float *phase_error, float npwr)
     {
         int v;
-        std::vector<float> tmp(2 * const_bits, 0);
+        float tmp[16] = {0.0f};
 
         if (const_amp != 1)
             sample = sample * const_amp;
@@ -300,23 +361,19 @@ namespace dsp
     void constellation_t::make_lut(int resolution)
     {
         lut_resolution = resolution;
-        lut.resize(resolution);
+        lut.resize(resolution * resolution);
 
         for (int x = 0; x < resolution; x++)
         {
-            lut[x].resize(resolution);
-
             for (int y = 0; y < resolution; y++)
             {
                 float x_v = (float(x - resolution / 2) / float(resolution)) * 1.5f;
                 float y_v = (float(y - resolution / 2) / float(resolution)) * 1.5f;
 
-                std::vector<int8_t> bits(const_bits);
-                float phase_err;
+                SoftResult result;
+                demod_soft_calc(complex_t(x_v, y_v), result.bits, &result.phase_error);
 
-                demod_soft_calc(complex_t(x_v, y_v), bits.data(), &phase_err);
-
-                lut[x][y] = {bits, phase_err};
+                lut[x * resolution + y] = result;
             }
         }
     }
@@ -341,7 +398,7 @@ namespace dsp
                 y = lut_resolution - 1;
 #endif
 
-            SoftResult &v = lut[x][y];
+            SoftResult &v = lut[x * lut_resolution + y];
 
             if (bits != nullptr)
                 for (int i = 0; i < const_bits; i++)
