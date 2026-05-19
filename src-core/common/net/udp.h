@@ -12,6 +12,11 @@
 #include <unistd.h>
 #endif
 
+#ifndef _WIN32
+typedef int SOCKET;
+#define INVALID_SOCKET -1
+#endif
+
 namespace net
 {
     class UDPClient
@@ -21,7 +26,7 @@ namespace net
 #if defined(_WIN32)
         WSADATA wsa;
 #endif
-        int sock = 0;
+        SOCKET sock = INVALID_SOCKET;
 
     public:
         UDPClient(char *address, int port)
@@ -31,8 +36,18 @@ namespace net
                 throw std::runtime_error("Couldn't startup WSA socket!");
 #endif
 
-            if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1)
+            if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == INVALID_SOCKET)
                 throw std::runtime_error("Couldn't open UDP socket!");
+
+#if defined(_WIN32)
+            // Disable the WSAECONNRESET behavior on ICMP Port Unreachable
+#ifndef SIO_UDP_CONNRESET
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#endif
+            BOOL bNewBehavior = FALSE;
+            DWORD dwBytesReturned = 0;
+            WSAIoctl(sock, SIO_UDP_CONNRESET, &bNewBehavior, sizeof(bNewBehavior), NULL, 0, &dwBytesReturned, NULL, NULL);
+#endif
 
             memset((char *)&sock_addr, 0, sizeof(sock_addr));
             sock_addr.sin_family = AF_INET;
@@ -46,22 +61,26 @@ namespace net
 #endif
         }
 
+        UDPClient(const UDPClient&) = delete;
+        UDPClient& operator=(const UDPClient&) = delete;
+
         ~UDPClient()
         {
+            if (sock != INVALID_SOCKET)
+            {
 #if defined(_WIN32)
             closesocket(sock);
             WSACleanup();
 #else
             close(sock);
 #endif
+            }
         }
 
         int send(uint8_t *data, int len)
         {
             int slen = sizeof(sockaddr);
             int r = sendto(sock, (char *)data, len, 0, (sockaddr *)&sock_addr, slen);
-            if (r == -1)
-                throw std::runtime_error("Error sending to UDP socket!");
             return r;
         }
 
@@ -86,7 +105,7 @@ namespace net
 #if defined(_WIN32)
         WSADATA wsa;
 #endif
-        int sock = 0;
+        SOCKET sock = INVALID_SOCKET;
 
     public:
         UDPServer(int port)
@@ -96,8 +115,18 @@ namespace net
                 throw std::runtime_error("Couldn't startup WSA socket!");
 #endif
 
-            if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) < 0)
+            if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == INVALID_SOCKET)
                 throw std::runtime_error("Couldn't open UDP socket!");
+
+#if defined(_WIN32)
+            // Disable the WSAECONNRESET behavior on ICMP Port Unreachable
+#ifndef SIO_UDP_CONNRESET
+#define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+#endif
+            BOOL bNewBehavior = FALSE;
+            DWORD dwBytesReturned = 0;
+            WSAIoctl(sock, SIO_UDP_CONNRESET, &bNewBehavior, sizeof(bNewBehavior), NULL, 0, &dwBytesReturned, NULL, NULL);
+#endif
 
             memset((char *)&sock_addr, 0, sizeof(sock_addr));
             sock_addr.sin_family = AF_INET;
@@ -113,8 +142,13 @@ namespace net
             setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, (char*)&ttrue, sizeof(int));
         }
 
+        UDPServer(const UDPServer&) = delete;
+        UDPServer& operator=(const UDPServer&) = delete;
+
         ~UDPServer()
         {
+            if (sock != INVALID_SOCKET)
+            {
 #if defined(_WIN32)
             closesocket(sock);
             WSACleanup();
@@ -122,14 +156,13 @@ namespace net
             shutdown(sock, SHUT_RDWR);
             close(sock);
 #endif
+            }
         }
 
         int send(uint8_t *data, int len)
         {
             int slen = sizeof(sockaddr);
             int r = sendto(sock, (char *)data, len, 0, (sockaddr *)&sock_addr, slen);
-            if (r == -1)
-                throw std::runtime_error("Error sending to UDP socket!");
             return r;
         }
 
@@ -144,7 +177,8 @@ namespace net
             if (r == -1)
             {
 #if defined(_WIN32)
-                if(WSAGetLastError() != WSAEINTR)
+                int err = WSAGetLastError();
+                if (err != WSAEINTR && err != WSAEWOULDBLOCK && err != WSAECONNRESET)
 #endif
                 throw std::runtime_error("Error receiving from UDP socket!");
             }
