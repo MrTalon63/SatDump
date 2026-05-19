@@ -30,7 +30,7 @@ namespace ssdv
         else
             throw satdump_exception("server_port_apid_100 parameter must be present!");
 
-        use_fecf(parameters.count("fecf") > 0 ? parameters["fecf"].get<bool>() : false),
+        use_fecf(parameters.count("fecf") > 0 ? parameters["fecf"].get<bool>() : false);
 
     }
 
